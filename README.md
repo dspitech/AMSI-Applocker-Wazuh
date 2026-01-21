@@ -5,6 +5,7 @@ Lab **Wazuh + Windows (Sysmon / AppLocker / PowerShell)** orienté détection, i
 > Ce projet est un **lab** / POC. Il n’a pas vocation à remplacer un durcissement de production ; adaptez toujours les configurations (réseau, identités, certificats, rétention, volumétrie) à votre contexte.
 
 Ce dépôt contient :
+
 - **Infrastructure Azure** (réseau + VMs + Bastion) via `main.bicep`
 - **Installation Wazuh** (Indexer/Manager/Dashboard) via script Linux (`wazuh.sh`) / one-liner (`code`)
 - **Onboarding Windows** (agent Wazuh, Sysmon, AppLocker, ScriptBlockLogging) via `agent-wazuh.ps1`
@@ -15,11 +16,14 @@ Ce dépôt contient :
 
 ## Architecture (vue rapide)
 
+![AMSI-WAZUH-APPLOCKER](/architecture.png)
+
 - **VM Ubuntu** (serveur Wazuh “all-in-one”): IP privée statique `10.0.1.10`
 - **VM Windows 10** (client) : agent Wazuh + Sysmon + logs PowerShell/AppLocker
 - **Azure Bastion** : accès d’administration sans exposer RDP/SSH
 
 Ports déclarés dans le NSG (`main.bicep`) :
+
 - `443` : Wazuh Dashboard (HTTPS)
 - `80` : HTTP (si utilisé)
 - `1514-1515` : communication agents Wazuh (depuis le Virtual Network)
@@ -31,15 +35,18 @@ Ports déclarés dans le NSG (`main.bicep`) :
 ## Prérequis
 
 ### Côté Azure (déploiement infra)
+
 - Un abonnement Azure et **Azure PowerShell** (`Az`) installé
 - Droits pour créer : Resource Group, VNet/NSG, Public IP, VMs, Bastion
 
 ### Côté VM Ubuntu (serveur Wazuh)
+
 - Ubuntu/Debian
 - `sudo` / accès root
 - Recommandé: **≥ 4 Go RAM**, **≥ 2 vCPU**, **≥ 30 Go disque**
 
 ### Côté VM Windows (agent)
+
 - Windows 10/11
 - PowerShell (idéalement PS 5.1+ / PS7)
 - Accès admin local (pour Sysmon / services / registre)
@@ -59,6 +66,7 @@ Ports déclarés dans le NSG (`main.bicep`) :
 ## Déploiement Azure (Bicep)
 
 Le fichier `main.bicep` déploie :
+
 - un **NSG** avec règles entrantes,
 - un **VNet** avec sous-réseau VMs + `AzureBastionSubnet`,
 - une **VM Ubuntu** (`srv-wazuh`) avec IP privée statique `10.0.1.10` + IP publique,
@@ -79,6 +87,7 @@ New-AzResourceGroupDeployment -ResourceGroupName "rg-Wazuh-PEN-300" `
 ```
 
 ### Paramètres à adapter
+
 - **`adminUsername`** dans `main.bicep` (par défaut : `kaliadmin`)
 - **`adminPassword`** (paramètre sécurisé)
 - La région Azure (`location`)
@@ -90,6 +99,7 @@ New-AzResourceGroupDeployment -ResourceGroupName "rg-Wazuh-PEN-300" `
 Deux approches existent dans ce dépôt :
 
 ### Option A — Installation automatisée (simple)
+
 La one-liner présente dans `code` télécharge puis exécute l’installateur Wazuh :
 
 ```bash
@@ -103,6 +113,7 @@ sudo apt update && sudo apt upgrade -y \
 > Remarque : la version (ici `4.8`) dépend de l’URL utilisée. Ajustez selon vos besoins.
 
 ### Option B — Installation “pas à pas” (maîtrisée)
+
 Le guide `wazuh.sh` documente une installation complète (certificats, indexer, filebeat, manager, dashboard) et des validations.
 
 > Note : malgré son extension `.sh`, `wazuh.sh` est principalement un **mémo de commandes**. Lisez-le, adaptez les placeholders (`<WAZUH_INDEXER_IP_ADDRESS>`, etc.) et exécutez-les étape par étape.
@@ -112,6 +123,7 @@ Le guide `wazuh.sh` documente une installation complète (certificats, indexer, 
 ## Installation et configuration de l’agent Windows
 
 Le script `agent-wazuh.ps1` automatise :
+
 - installation de l’**agent Wazuh**,
 - démarrage du service `WazuhSvc`,
 - installation de **Sysmon** avec une conf “SwiftOnSecurity”,
@@ -119,12 +131,15 @@ Le script `agent-wazuh.ps1` automatise :
 - activation du **PowerShell Script Block Logging** (utile pour détection AMSI).
 
 ### 1) Adapter les paramètres Wazuh Manager
+
 Dans `agent-wazuh.ps1`, vérifiez :
+
 - `WAZUH_MANAGER='10.0.1.10'` (IP du serveur Wazuh)
 - `WAZUH_AGENT_GROUP='VMs-Windows'`
 - `WAZUH_AGENT_NAME='Windows-10'`
 
 ### 2) Exécuter le script
+
 Sur la VM Windows (en admin) :
 
 ```powershell
@@ -133,7 +148,9 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
 ```
 
 ### 3) Appliquer la configuration agent (`file-agent.conf`)
+
 Le fichier `file-agent.conf` fournit un bloc `agent_config` pour Windows qui :
+
 - collecte les EventChannels :
   - `Microsoft-Windows-AppLocker/EXE and DLL`
   - `Microsoft-Windows-Sysmon/Operational`
@@ -144,6 +161,7 @@ Le fichier `file-agent.conf` fournit un bloc `agent_config` pour Windows qui :
   - `C:\Windows\System32\drivers\etc`
 
 Selon votre stratégie, vous pouvez :
+
 - l’intégrer à la configuration centrale Wazuh (agent groups),
 - ou l’appliquer côté agent (selon votre mode d’administration).
 
@@ -152,12 +170,14 @@ Selon votre stratégie, vous pouvez :
 ## Règles de détection personnalisées (`rules-local.xml`)
 
 Le fichier `rules-local.xml` ajoute un groupe `windows,pentest,custom` avec notamment :
+
 - **AppLocker** : événements et alertes critiques pour exécutions bloquées
 - **Sysmon (event1)** : détection d’outils/commandes de pentest (ex : mimikatz, sekurlsa, lsadump, etc.)
 - **Microsoft Defender** : détections (ex : EventID 1116/1117)
 - **AMSI bypass** : patterns PowerShell (EventID 4104) pour `AmsiScanBuffer`, `amsiInitFailed`, `AmsiUtils` (MITRE `T1562.001`)
 
 ### Déploiement côté Wazuh
+
 En pratique, ce fichier est destiné au serveur Wazuh (Manager) dans le mécanisme de règles locales (ex: `rules/local_rules.xml` ou inclusion équivalente selon votre installation). Adaptez le chemin exact selon votre méthode d’installation (Option A vs Option B) puis rechargez/redémarrez le Manager.
 
 ---
@@ -217,4 +237,3 @@ En pratique, ce fichier est destiné au serveur Wazuh (Manager) dans le mécanis
 ## Licence
 
 Non spécifiée pour le moment. Ajoutez un fichier `LICENSE` si vous souhaitez clarifier les conditions d’utilisation.
-
