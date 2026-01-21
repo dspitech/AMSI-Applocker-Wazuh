@@ -1,0 +1,52 @@
+<group name="local,syslog,sshd,">
+  <rule id="100001" level="5">
+    <if_sid>5716</if_sid>
+    <srcip>1.1.1.1</srcip>
+    <description>sshd: authentication failed from IP 1.1.1.1.</description>
+    <group>authentication_failed,pci_dss_10.2.4,pci_dss_10.2.5,</group>
+  </rule>
+</group>
+
+<group name="windows,pentest,custom,">
+
+  <rule id="100100" level="3">
+    <if_sid>60000</if_sid>
+    <field name="win.system.providerName">^Microsoft-Windows-AppLocker$</field>
+    <description>Événement AppLocker détecté sur $(win.system.computer).</description>
+  </rule>
+
+  <rule id="100101" level="10">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^8004$|^8025$</field>
+    <description>Alerte critique : Exécution bloquée par AppLocker sur $(win.system.computer). Fichier : $(win.eventdata.filePath)</description>
+    <mitre>
+      <id>T1218</id>
+    </mitre>
+  </rule>
+
+  <rule id="100110" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)mimikatz|sekurlsa|lsadump|logonpasswords|powerup|invokev-</field>
+    <description>Outil de Pentest détecté dans la ligne de commande sur $(win.system.computer) !</description>
+    <mitre>
+      <id>T1003</id>
+    </mitre>
+  </rule>
+
+  <rule id="100120" level="10">
+    <if_sid>60000</if_sid>
+    <field name="win.system.providerName">^Microsoft-Windows-Windows Defender$</field>
+    <field name="win.system.eventID">^1116$|^1117$</field>
+    <description>Microsoft Defender a détecté une menace sur $(win.system.computer). Menace : $(win.eventdata.threatName)</description>
+  </rule>
+
+  <rule id="100130" level="12">
+    <if_sid>60000</if_sid>
+    <field name="win.system.providerName">^Microsoft-Windows-PowerShell$</field>
+    <field name="win.system.eventID">^4104$</field> <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)AmsiScanBuffer|amsiInitFailed|AmsiUtils</field>
+    <description>Alerte critique : Tentative de contournement (Bypass) AMSI détectée dans un script PowerShell sur $(win.system.computer) !</description>
+    <mitre>
+      <id>T1562.001</id> </mitre>
+  </rule>
+
+</group>

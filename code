@@ -1,0 +1,17 @@
+# Créer le groupe de ressources
+New-AzResourceGroup -Name "rg-Wazuh-PEN-300" -Location "norwayeast"
+
+# Déploiement
+$securePassword = ("Kali-Azure-2026!#" | ConvertTo-SecureString -AsPlainText -Force)
+New-AzResourceGroupDeployment -ResourceGroupName "rg-Wazuh-PEN-300" `
+  -TemplateFile "./main.bicep" `
+  -adminPassword $securePassword
+
+
+# Installation Wazuh
+
+sudo apt update && sudo apt upgrade -y && sudo apt install -y curl apt-transport-https unzip wget libcap2-bin software-properties-common lsb-release gnupg2 && curl -sO https://packages.wazuh.com/4.8/wazuh-install.sh && chmod +x wazuh-install.sh && sudo bash ./wazuh-install.sh -a
+
+
+
+
